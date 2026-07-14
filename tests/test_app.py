@@ -38,3 +38,26 @@ def test_read_users_with_existing_user(client, user):
     response = client.get('/users/')
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'users': [user_schema]}
+
+
+def test_update_user(client, user):
+    response = client.put(
+        f'/users/{user.id}',
+        json={
+            'username': 'alice_updated',
+            'email': 'alice@email.com',
+            'password': 'new_secret',
+        },
+    )
+    assert response.status_code == HTTPStatus.OK
+    assert response.json() == {
+        'id': 1,
+        'username': 'alice_updated',
+        'email': 'alice@email.com',
+    }
+
+
+def test_delete_user(client, user):
+    response = client.delete(f'/users/{user.id}')
+    assert response.status_code == HTTPStatus.NO_CONTENT
+    assert response.content == b''

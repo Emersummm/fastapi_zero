@@ -46,3 +46,35 @@ def read_users(
 ):
     users = session.scalars(select(User).offset(skip).limit(limit)).all()
     return {'users': users}
+
+
+@app.put('/users/{user_id}', response_model=UserPublic)
+def update_user(
+    user_id: int, user: UserSchema, session: Session = Depends(get_session)
+):
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail='User not found'
+        )
+
+    db_user.username = user.username
+    db_user.email = user.email
+    db_user.password = user.password
+
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    return db_user
+
+
+@app.delete('/users/{user_id}', status_code=HTTPStatus.NO_CONTENT)
+def delete_user(user_id: int, session: Session = Depends(get_session)):
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail='User not found'
+        )
+
+    session.delete(db_user)
+    session.commit()
