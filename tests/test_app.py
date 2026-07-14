@@ -1,5 +1,7 @@
 from http import HTTPStatus
 
+from fastapi_zero.schemas import UserPublic
+
 
 def test_read_root(client):
     response = client.get('/')
@@ -32,14 +34,7 @@ def test_read_users(client):
 
 
 def test_read_users_with_existing_user(client, user):
+    user_schema = UserPublic.model_validate(user).model_dump()
     response = client.get('/users/')
     assert response.status_code == HTTPStatus.OK
-    assert response.json() == {
-        'users': [
-            {
-                'id': user.id,
-                'username': user.username,
-                'email': user.email,
-            }
-        ]
-    }
+    assert response.json() == {'users': [user_schema]}
