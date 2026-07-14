@@ -1,93 +1,48 @@
-from enum import Enum
-from typing import Dict, List, Optional
+from http import HTTPStatus
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Path, Query
-from pydantic import BaseModel
+from fastapi import Depends, FastAPI, HTTPException
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-
-class ItemType(str, Enum):
-    book = 'book'
-    gadget = 'gadget'
-    tool = 'tool'
-
-
-class Item(BaseModel):
-    name: str
-    description: Optional[str] = None
-    price: float
-    tags: List[str] = []
-    type: ItemType = ItemType.tool
-    in_stock: bool = True
-
+from fastapi_zero.database import get_session
+from fastapi_zero.models import User
+from fastapi_zero.schemas import UserList, UserPublic, UserSchema
 
 app = FastAPI(title='FastAPI Maneiro', version='0.1.0')
 
 
-db: Dict[int, Item] = {
-    1: Item(
-        name='Caneca',
-        description='Caneca térmica preta',
-        price=39.90,
-        tags=['quente', 'café'],
-        type=ItemType.gadget,
-    ),
-    2: Item(
-        name='Caderno',
-        description='Caderno de anotações',
-        price=24.50,
-        tags=['papelaria'],
-        type=ItemType.book,
-    ),
-}
-
-
-def notify_new_item(item_id: int, item: Item):
-    print(f'Novo item cadastrado: {item_id} - {item.name}')
-
-
 @app.get('/')
 def read_root():
-    return {'message': 'Olá! Acesse /items para testar o CRUD'}
+    return {'message': 'Olá!'}
 
 
-@app.get('/items')
-def list_items(
-    item_type: Optional[ItemType] = Query(None),
-    limit: int = Query(10, ge=1, le=50),
+@app.post('/users/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
+def create_user(user: UserSchema, session: Session = Depends(get_session)):
+    db_user = session.scalar(
+        select(User).where(
+            (User.username == user.username) | (User.email == user.email)
+        )
+    )
+    if db_user:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail='Username or email already registered',
+        )
+
+    db_user = User(
+        username=user.username,
+        email=user.email,
+        password=user.password,
+    )
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    return db_user
+
+
+@app.get('/users/', response_model=UserList)
+def read_users(
+    skip: int = 0, limit: int = 100, session: Session = Depends(get_session)
 ):
-    items = [
-        item.dict()
-        for item in db.values()
-        if item_type is None or item.type == item_type
-    ]
-    return {'count': len(items), 'items': items[:limit]}
-
-
-@app.get('/items/{item_id}')
-def read_item(
-    item_id: int = Path(..., ge=1),
-    q: Optional[str] = Query(None, max_length=50),
-):
-    item = db.get(item_id)
-    if not item:
-        raise HTTPException(status_code=404, detail='Item não encontrado')
-    result = item.dict()
-    if q:
-        result['q'] = q
-    return result
-
-
-@app.post('/items', status_code=201)
-def create_item(item: Item, background_tasks: BackgroundTasks):
-    item_id = max(db.keys(), default=0) + 1
-    db[item_id] = item
-    background_tasks.add_task(notify_new_item, item_id, item)
-    return {'item_id': item_id, 'item': item}
-
-
-@app.put('/items/{item_id}')
-def update_item(item_id: int, item: Item):
-    if item_id not in db:
-        raise HTTPException(status_code=404, detail='Item não encontrado')
-    db[item_id] = item
-    return {'item_id': item_id, 'item': item}
+    users = session.scalars(select(User).offset(skip).limit(limit)).all()
+    return {'users': users}
