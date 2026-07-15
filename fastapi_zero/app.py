@@ -2,6 +2,7 @@ from http import HTTPStatus
 
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from fastapi_zero.database import get_session
@@ -26,7 +27,7 @@ def create_user(user: UserSchema, session: Session = Depends(get_session)):
     if db_user:
         raise HTTPException(
             status_code=HTTPStatus.CONFLICT,
-            detail='Username or email already registered',
+            detail='Username or Email already exists',
         )
 
     db_user = User(
@@ -48,6 +49,16 @@ def read_users(
     return {'users': users}
 
 
+@app.get('/users/{user_id}', response_model=UserPublic)
+def read_user(user_id: int, session: Session = Depends(get_session)):
+    db_user = session.get(User, user_id)
+    if not db_user:
+        raise HTTPException(
+            status_code=HTTPStatus.NOT_FOUND, detail='User not found'
+        )
+    return db_user
+
+
 @app.put('/users/{user_id}', response_model=UserPublic)
 def update_user(
     user_id: int, user: UserSchema, session: Session = Depends(get_session)
@@ -58,14 +69,20 @@ def update_user(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found'
         )
 
-    db_user.username = user.username
-    db_user.email = user.email
-    db_user.password = user.password
+    try:
+        db_user.username = user.username
+        db_user.password = user.password
+        db_user.email = user.email
+        session.commit()
+        session.refresh(db_user)
 
-    session.add(db_user)
-    session.commit()
-    session.refresh(db_user)
-    return db_user
+        return db_user
+
+    except IntegrityError:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail='Username or Email already exists',
+        )
 
 
 @app.delete('/users/{user_id}', status_code=HTTPStatus.NO_CONTENT)
