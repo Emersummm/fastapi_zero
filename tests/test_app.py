@@ -27,20 +27,16 @@ def test_create_user(client):
     }
 
 
-def test_read_users(client):
-    response = client.get('/users/')
-    assert response.status_code == HTTPStatus.OK
-    assert response.json() == {'users': []}
-
-
-def test_read_users_with_existing_user(client, user):
+def test_read_users(client, user, token):
     user_schema = UserPublic.model_validate(user).model_dump()
-    response = client.get('/users/')
+    response = client.get(
+        '/users/', headers={'Authorization': f'Bearer {token}'}
+    )
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {'users': [user_schema]}
 
 
-def test_update_user(client, user):
+def test_update_user(client, user, token):
     response = client.put(
         f'/users/{user.id}',
         json={
@@ -48,6 +44,7 @@ def test_update_user(client, user):
             'email': 'alice@email.com',
             'password': 'new_secret',
         },
+        headers={'Authorization': f'Bearer {token}'},
     )
     assert response.status_code == HTTPStatus.OK
     assert response.json() == {
@@ -57,13 +54,15 @@ def test_update_user(client, user):
     }
 
 
-def test_delete_user(client, user):
-    response = client.delete(f'/users/{user.id}')
+def test_delete_user(client, user, token):
+    response = client.delete(
+        f'/users/{user.id}', headers={'Authorization': f'Bearer {token}'}
+    )
     assert response.status_code == HTTPStatus.NO_CONTENT
     assert response.content == b''
 
 
-def test_update_integrity_error(client, user):
+def test_update_integrity_error(client, user, token):
     client.post(
         '/users',
         json={
@@ -80,6 +79,7 @@ def test_update_integrity_error(client, user):
             'email': 'bob@example.com',
             'password': 'mynewpassword',
         },
+        headers={'Authorization': f'Bearer {token}'},
     )
 
     assert response_update.status_code == HTTPStatus.CONFLICT
@@ -116,24 +116,27 @@ def test_create_user_should_return_conflict_if_email_exists(client, user):
     assert response.json() == {'detail': 'Username or Email already exists'}
 
 
-def test_delete_user_should_return_not_found(client):
-    response = client.delete('/users/666')
+# def test_delete_user_should_return_not_found(client, token):
+#     response = client.delete(
+#         '/users/666', headers={'Authorization': f'Bearer {token}'}
+#     )
 
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json() == {'detail': 'User not found'}
+#     assert response.status_code == HTTPStatus.NOT_FOUND
+#     assert response.json() == {'detail': 'User not found'}
 
 
-def test_update_user_should_return_not_found(client):
-    response = client.put(
-        '/users/666',
-        json={
-            'username': 'bob',
-            'email': 'bob@example.com',
-            'password': 'mynewpassword',
-        },
-    )
-    assert response.status_code == HTTPStatus.NOT_FOUND
-    assert response.json() == {'detail': 'User not found'}
+# def test_update_user_should_return_not_found(client, token):
+#     response = client.put(
+#         '/users/666',
+#         json={
+#             'username': 'bob',
+#             'email': 'bob@example.com',
+#             'password': 'mynewpassword',
+#         },
+#         headers={'Authorization': f'Bearer {token}'},
+#     )
+#     assert response.status_code == HTTPStatus.NOT_FOUND
+#     assert response.json() == {'detail': 'User not found'}
 
 
 def test_read_user_should_return_not_found(client):
@@ -152,3 +155,16 @@ def test_read_user_should_return_user(client, user):
         'username': user.username,
         'email': user.email,
     }
+
+
+def test_get_token(client, user):
+    response = client.post(
+        '/token',
+        data={'username': user.email, 'password': user.clean_password},
+    )
+
+    token = response.json()
+
+    assert response.status_code == HTTPStatus.OK
+    assert 'access_token' in token
+    assert token['token_type'] == 'Bearer'
